@@ -77,7 +77,6 @@ while choice != 3:
         choice = show_menu(guest_options)  # mostra o menu de guest e recebe a escolha
         if choice == 1:  # login
             current_user = login(user_list)
-            print(current_user)
         elif choice == 2: # register
             register_user = register(user_list)
     elif current_user == "admin": # se o usuário é o admin
