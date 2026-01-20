@@ -3,11 +3,48 @@ from datetime import datetime, timedelta
 now = datetime.now()
 session_time = now.strftime("%H:%M:%S")
 
-# in-memory user list
-user_list = [
-    {"username": "admin", "password": "321", "attempts": 3, "blocked_until": None},
-{"username": "ramon", "password": "123", "attempts": 3, "blocked_until": None}
-]
+user_data = "user_data.txt"
+def load_users():
+    users = [] # local user list
+    with open(user_data, "r", encoding="utf-8") as f: # open file in read mode and auto close when exits with's scope
+        for line in f: # for each line in the data file
+            line = line.strip()
+            if not line:
+                continue
+
+            username, password, attempts, blocked_until = line.split(";") # split the line using ; as the delimiter
+
+            # convert the line data into a dictionary
+            users.append({
+                "username": username,
+                "password": password,
+                "attempts": int(attempts), # attempts converted to integer
+                "blocked_until": None if blocked_until == "None" # convert string to python None
+                else datetime.fromisoformat(blocked_until) # convert ISO string to datetime
+            })
+
+    return users
+
+def save_users(user_list):
+    # open data file in write mode (w) overwriting the entire file content
+    with open(user_data, "w", encoding="utf-8") as f:
+        # iterate over each user in memory
+        for user in user_list:
+            # convert blocked_until to string before saving
+            blocked = (
+                "None" # store as text if not blocked
+                if user["blocked_until"] is None
+                else user["blocked_until"].isoformat()
+            )
+            # build line in the file format
+            line = (
+                f"{user['username']};"
+                f"{user['password']};"
+                f"{user['attempts']};"
+                f"{blocked}\n"
+            )
+            f.write(line) # write each line to the file
+
 
 # not logged in menu options
 guest_options = {
@@ -59,7 +96,7 @@ def validate_username(user_list, username):
             return False
     return True
 
-#validate password rules
+# validate password rules
 def validate_pass(password):
     if len(password) < 8:
         print("Password must be at least 8 characters long.")
@@ -72,7 +109,7 @@ def validate_pass(password):
         return False
     return True
 
-#registers a new user
+# registers a new user
 def register(user_list):
     while True: # username validation loop
         username = input("Create your username: ")
@@ -120,17 +157,16 @@ def login(user_list):
                     user["attempts"] -= 1 # decreases login attempts
                     print(f"Incorrect password. Attempts left: {user['attempts']}.")
             user["blocked_until"] = datetime.now() + timedelta(minutes=3) # blocks user for 3 minutes
-            print("You achieved 3 attempts. Try again after 3 minutes.")
+            print("You have reached 3 attempts. Try again after 3 minutes.")
             return None
     # executed if user was not found in the user_list
     print("This user does not exist.")
     return None
 
 # logs out the current user
-def logout(current_user):
-    if current_user is not None:
-        print("You successfully logged out.")
-        return None
+def logout():
+    print("You successfully logged out.")
+    return None
 
 # renames a user (logged only)
 def rename_user(user_list, old_username, new_username):
@@ -179,6 +215,7 @@ def show_users(user_list):
         print(user["username"])
 
 # control variables
+user_list = load_users()
 current_user = None
 action = None
 
@@ -195,6 +232,7 @@ while True:
             register(user_list)
 
         elif action == "Exit":
+            save_users(user_list)
             break
 
     elif current_user == "admin":
@@ -206,9 +244,10 @@ while True:
             delete_user(user_list, username)
 
         elif action == "Logout":
-            logout()
+            current_user = logout()
 
         elif action == "Exit":
+            save_users(user_list)
             break
 
     else:
@@ -227,4 +266,5 @@ while True:
             current_user = logout()
 
         elif action == "Exit":
+            save_users(user_list)
             break
