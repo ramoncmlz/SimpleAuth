@@ -1,3 +1,11 @@
+## 📌 About the project
+
+This project is a **terminal-based login system written in Python**, developed with a focus on learning programming logic, authentication, and user management.
+
+The system allows user registration, login, and account management, with a distinction between regular users and an administrator. 
+User data is stored in a **text file (`.txt`)**, simulating data persistence without using a database, including basic security validations and access attempt control.
+
+---
 
 - When the program starts:
   - The file is read

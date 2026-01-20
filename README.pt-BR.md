@@ -1,3 +1,11 @@
+## 📌 Sobre o projeto
+
+Este projeto é um **sistema de login em Python executado no terminal**, desenvolvido com foco em aprendizado de lógica de programação, autenticação e controle de usuários.
+
+O sistema permite registro, login e gerenciamento de contas, com diferenciação entre usuários comuns e administrador.
+Os dados dos usuários são armazenados em um **arquivo de texto (`.txt`)**, simulando persistência de dados sem uso de banco de dados, com validações de segurança e controle de tentativas de acesso.
+
+---
 
 - Ao iniciar o programa:
   - Os dados do arquivo são lidos
