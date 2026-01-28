@@ -1,9 +1,4 @@
 
----
-
-# 🇺🇸 README.md
-
-```md
 🇺🇸 English | 🇧🇷 [Português](README.pt-BR.md)
 
 ## 📌 About SimpleAuth
