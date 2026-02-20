@@ -2,86 +2,56 @@
 
 ## 📌 Sobre o SimpleAuth
 
-SimpleAuth é uma **API de autenticação de usuários desenvolvida com FastAPI**, criada com o objetivo de evoluir um sistema de login que antes rodava apenas no terminal para uma **arquitetura baseada em requisições HTTP**.
+SimpleAuth é uma **API de autenticação de usuários desenvolvida com FastAPI**.
 
-O uso do FastAPI permite separar a lógica de autenticação da interface, tornando o sistema mais organizado, reutilizável e preparado para futuras integrações, como aplicações web, mobile ou frontends em geral.
-
-Atualmente, os dados dos usuários são mantidos **em memória**, simulando o funcionamento de um sistema real enquanto os conceitos são aprendidos.
+O projeto evoluiu de um sistema de login em terminal para um backend HTTP com persistência real, autenticação por token e controle de acesso.
 
 ---
 
-## ⚙️ Funcionalidades atuais
+## ⚙️ Funcionalidades
 
-- 🧑‍💻 Registro de usuários via endpoint (`/register`)
-- 🔐 Login com controle de tentativas inválidas
-- ⏳ Bloqueio temporário após exceder o número de tentativas
-- 🚪 Logout de usuários autenticados
-- ✏️ Alteração de nome de usuário
-- 🔄 Alteração de senha
-- 🛡️ Usuário administrador com permissões especiais
-- ❌ Exclusão de usuários (somente admin)
-- 📋 Listagem de usuários (somente admin)
-- 🌐 API REST usando FastAPI
-
----
-
-## 🧠 Como o sistema funciona
-
-- Cada usuário é representado por uma **classe `User`**, contendo:
-  - `user_id`
-  - `username`
-  - `password`
-  - `is_logged`
-  - `attempts`
-  - `blocked_until`
-
-- Os usuários são armazenados em uma **lista em memória** (`user_list`).
-- A API expõe endpoints que manipulam esses usuários através de requisições HTTP.
-- O controle de autenticação é feito por estado (`is_logged`), simulando sessões.
-- O sistema implementa:
-  - validação de nome do usuário
-  - validação de senha
-  - controle de tentativas
-  - bloqueio temporário usando `datetime` e `timedelta`
+- Registro de usuário (`POST /register`)
+- Login com token JWT (`POST /login`)
+- Controle automático de tentativas inválidas
+- Bloqueio temporário após múltiplas tentativas inválidas
+- Logout por token (`POST /logout`)
+- Alteração de username com invalidação automática da sessão (`POST /change-username`)
+- Alteração de senha (`POST /change-password`)
+- Exclusão de usuário somente por admin (`DELETE /delete-user`)
+- Listagem de usuários somente por admin (`GET /show-users`)
+- Verificação de autenticação (`GET /me`)
 
 ---
 
-## 🆕 O que há de novo em relação à versão anterior
+## 🧠 Como Funciona
 
-- 🔁 O sistema deixou de ser apenas um menu de terminal
-- 🌐 Passou a funcionar como uma **API REST**
-- 🧱 Uso de **FastAPI** para estruturar rotas e regras de negócio
-- 🧠 Separação clara entre:
-  - validação
-  - regras de autenticação
-  - controle de usuários
-- 🚀 Código preparado para persistência real de dados
-
----
-
-## 🎯 Por que FastAPI foi usado
-
-O FastAPI foi escolhido para:
-- aprender como sistemas de login funcionam em **backends reais**
-- expor funcionalidades via HTTP
-- preparar o projeto para integração com banco de dados
-- facilitar testes com ferramentas como Postman ou Swagger
-- tornar o código mais escalável e organizado
+- A API usa **SQLite** para persistência (`app/storage/simpleauth.db`).
+- Senhas são armazenadas como **hash** (`pbkdf2_sha256` com `passlib`).
+- A autenticação usa **JWT Bearer token**.
+- O sistema garante uma sessão ativa por usuário com:
+  - `session_active`
+  - `session_version`
+- Endpoints protegidos identificam o usuário atual através do token.
 
 ---
 
-## 🚧 Próximos passos
+## 🆕 O Que Há De Novo Em Relação À Versão Anterior
 
-- 🗄️ Implementar um **banco de dados relacional (SQLite)** para persistência de usuários
-- 🔒 Adicionar **hashing de senhas** (ex: bcrypt)
-- 🧩 Substituir armazenamento em memória por **camada de persistência**
-- 🔑 Implementar autenticação baseada em **tokens (JWT)**
-- 🧪 Melhorar tratamento de erros e validações
+- Migração de usuários em memória para **persistência em SQLite**
+- Substituição de estado `is_logged` por **autenticação com JWT**
+- Inclusão de **hash de senha**
+- Invalidação automática de sessão após troca de username
+- Padronização de erros HTTP (`400`, `401`, `403`, `404`, `409`, `429`)
+- Fluxos de requisição testados com Postman
 
 ---
 
-## ▶️ Como executar
+## ▶️ Como Executar
 
 ```bash
-uvicorn main:app --reload
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
+A documentação da API é gerada automaticamente pelo Swagger.

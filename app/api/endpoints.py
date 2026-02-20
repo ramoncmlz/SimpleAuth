@@ -1,205 +1,243 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime, timedelta
 
-from app.services.user_service import (
-    User,
-    user_list,
-    get_user,
-    username_exists,
-    validate_username,
-    validate_pass
+from app.schemas import (
+    RegisterRequest,
+    LoginRequest,
+    TokenResponse,
+    ChangeUsernameRequest,
+    ChangePasswordRequest,
+    DeleteUserRequest,
+    ShowUsersRequest,
+    MessageResponse,
+    ShowUsersResponse
 )
+from app.services.user_service import (
+    activate_session,
+    deactivate_session,
+    delete_user_by_username,
+    find_user_by_username,
+    list_usernames,
+    register_failed_login,
+    reset_login_state,
+    update_password,
+    update_username,
+    validate_pass,
+    validate_username,
+    create_user,
+    username_exists,
+)
+from app.security.jwt import create_access_token, get_current_username
+from app.security.password import hash_password, verify_password
 
 router = APIRouter()
 
-@router.post("/register")
-def register(data: dict):
-    username = data.get("username")
-    password = data.get("password")
+@router.post("/register", response_model=MessageResponse)
+def register(data: RegisterRequest):
+    username = data.username
+    password = data.password
 
     username_ok, error_msg = validate_username(username)
+
     if not username_ok:
-        return {"status": "error", "message": error_msg}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+    
     if username_exists(username):
-        return {"status": "error", "message": "Username already in use."}
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already in use.",
+        )
 
     password_ok, error_msg = validate_pass(password)
     if not password_ok:
-        return {"status": "error", "message": error_msg}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
-    new_user = User(username=username, password=password)
-    user_list.append(new_user)
+    hashed = hash_password(password)
+    create_user(username, hashed)
+    return MessageResponse(status="success", message=f"{username} registered successfully.")
 
-    return {
-        "status": "success", "message": f"{username} registered successfully."
-    }
+@router.post("/login", response_model=TokenResponse | MessageResponse)
+def login(data: LoginRequest):
+    username = data.username
+    password = data.password
 
-@router.post("/login")
-def login(data: dict):
-    username = data.get("username")
-    password = data.get("password")
-
-    user = get_user(username)
+    user = find_user_by_username(username)
 
     if user is None:
-        return {"status": "error", "message": "User not found."}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    if user.is_logged:
-        return {
-            "status": "error",
-            "message": f"You already logged as {username}."
-        }
+    if int(user["session_active"]) == 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This user already has an active session. Please logout first.",
+        )
 
-    if user.blocked_until is not None:
-        if datetime.now() < user.blocked_until:
-            remaining = user.blocked_until - datetime.now()
-            return {
-                "status": "error",
-                "message": f"This user is temporarily blocked. Try again after {int(remaining.total_seconds())} seconds."
-            }
-        else:
-            user.blocked_until = None
-            user.attempts = 3
+    if user["blocked_until"] is not None:
+        blocked_until = datetime.fromisoformat(user["blocked_until"])
+        if datetime.now() < blocked_until:
+            remaining = blocked_until - datetime.now()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"This user is temporarily blocked. Try again after {int(remaining.total_seconds())} seconds.",
+            )
+        reset_login_state(username)
 
-    if password == user.password:
-        user.is_logged = True
-        user.attempts = 3
-        return {
-            "status": "success",
-            "message": f"You successfully logged in as {username}."
-        }
+    if verify_password(password, user["password"]):
+        reset_login_state(username)
+        session_version = activate_session(username)
+        if session_version is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Could not start user session.",
+            )
 
-    # incorrect password
-    user.attempts -= 1
+        token = create_access_token(subject=username, session_version=session_version)
+        return TokenResponse(access_token=token, token_type="bearer")
 
-    if user.attempts <= 0:
-        user.blocked_until = datetime.now() + timedelta(minutes=3)
-        return {
-            "status": "error",
-            "message": "You have reached 3 attempts. Try again after 3 minutes."
-        }
+    attempts_left, blocked = register_failed_login(username)
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have reached 3 attempts. Try again after 3 minutes.",
+        )
 
-    return {
-        "status": "error",
-        "message": f"Incorrect password. Attempts left: {user.attempts}"
-    }
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Incorrect password. Attempts left: {attempts_left}",
+    )
 
-@router.post("/logout")
-def logout(data: dict):
-    username = data.get("username")
-    user = get_user(username)
 
-    if user is None:
-        return {"status": "error", "message": "User not found."}
+@router.get("/me", response_model=MessageResponse)
+def me(current_username: str = Depends(get_current_username)):
+    return MessageResponse(status="success", message=f"Authenticated as {current_username}.")
 
-    if not user.is_logged:
-        return {
-            "status": "error", "message": "This user is not logged in"
-        }
-    user.is_logged = False
-    return {
-        "status": "success", "message": "You successfully logged out."
-    }
+@router.post("/logout", response_model=MessageResponse)
+def logout(current_username: str = Depends(get_current_username)):
+    if not deactivate_session(current_username):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This user is not logged in.",
+        )
+    return MessageResponse(status="success", message="You successfully logged out.")
 
-@router.post("/change-username")
-def rename_user(data: dict):
-    requester = data.get("requester")
-    new_username = data.get("new_username")
-    
-    requester = get_user(requester)
-    if requester is None:
-        return {
-            "status": "error",
-            "message": "Requester not found."
-        }
+@router.post("/change-username", response_model=MessageResponse)
+def rename_user(data: ChangeUsernameRequest, current_username: str = Depends(get_current_username)):
+    requester = data.requester
+    new_username = data.new_username
 
-    if not requester.is_logged:
-        return {
-            "status": "error",
-            "message": "Requester is not logged in."
-        }
+    if requester != current_username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token user does not match requester.",
+        )
+
+    requester_user = find_user_by_username(requester)
+    if requester_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requester not found.")
 
     username_ok, error_msg = validate_username(new_username)
     if not username_ok:
-        return {
-            "status": "error",
-            "message": error_msg
-        }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
     if username_exists(new_username):
-        return {"status": "error", "message": "Username already in use."}
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already in use.",
+        )
 
-    requester.username = new_username
+    if not update_username(requester, new_username):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not update username.",
+        )
 
-    return {
-        "status": "success",
-        "message": f"Username changed to {new_username}."
-    }
+    deactivate_session(new_username)
+    return MessageResponse(
+        status="success",
+        message=f"Username changed to {new_username}. Session closed automatically, please login again.",
+    )
 
-@router.post("/change-password")
-def change_pass(data: dict):
-    requester = data.get("requester")
-    new_password = data.get("new_password")
-    
-    requester = get_user(requester)
-    if requester is None:
-        return {
-            "status": "error",
-            "message": "Requester not found."
-        }
+@router.post("/change-password", response_model=MessageResponse)
+def change_pass(data: ChangePasswordRequest, current_username: str = Depends(get_current_username)):
+    requester = data.requester
+    new_password = data.new_password
 
-    if not requester.is_logged:
-        return {
-            "status": "error",
-            "message": "Requester is not logged in."
-        }
+    if requester != current_username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token user does not match requester.",
+        )
+
+    requester_user = find_user_by_username(requester)
+    if requester_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requester not found.")
 
     password_ok, error_msg = validate_pass(new_password)
     if not password_ok:
-        return {
-            "status": "error",
-            "message": error_msg
-        }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
-    requester.password = new_password
-    return {
-        "status": "success", "message": f"User {requester.username} password changed successfully. ."
-    }
+    hashed_password = hash_password(new_password)
+    if not update_password(requester, hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not update password.",
+        )
 
-@router.delete("/delete-user")
-def delete_user(requester: str, target: str):
-    admin = get_user(requester)
-    if admin is None:
-        return {"status": "error", "message": "Requester not found."}
+    return MessageResponse(
+        status="success",
+        message=f"User {requester} password changed successfully.",
+    )
 
-    if admin.username != "admin":
-        return {"status": "error", "message": "Only admin can delete users."}
+@router.delete("/delete-user", response_model=MessageResponse)
+def delete_user(data: DeleteUserRequest, current_username: str = Depends(get_current_username)):
+    requester = data.requester
+    target = data.target
 
-    if not admin.is_logged:
-        return {"status": "error", "message": "Admin is not logged in."}
+    if requester != current_username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token user does not match requester.",
+        )
 
-    user_target = get_user(target)
-    if user_target is None:
-        return {"status": "error", "message": "User to delete not found."}
+    admin_user = find_user_by_username(current_username)
+    if admin_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requester not found.")
 
-    user_list.remove(user_target)
+    if admin_user["username"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin can delete users.",
+        )
 
-    return {
-        "status": "success",
-        "message": f"User {target} deleted successfully."
-    }
+    if not username_exists(target):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User to delete not found.",
+        )
 
-@router.get("/show-users")
-def show_users(requester: str):
-    user = get_user(requester)
+    if not delete_user_by_username(target):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete user.",
+        )
 
+    return MessageResponse(status="success", message=f"User {target} deleted successfully.")
+
+@router.get("/show-users", response_model=ShowUsersResponse | MessageResponse)
+def show_users(params: ShowUsersRequest = Depends(), current_username: str = Depends(get_current_username)):
+    requester = params.requester
+
+    if requester != current_username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token user does not match requester.",
+        )
+
+    user = find_user_by_username(current_username)
     if user is None:
-        return {"status": "error", "message": "User not found."}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    if not user.is_logged:
-        return {"status": "error", "message": "User is not logged in."}
+    if user["username"] != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied.")
 
-    if user.username != "admin":
-        return {"status": "error", "message": "Permission denied."}
-
-    return [u.username for u in user_list]
+    return {"users": list_usernames()}

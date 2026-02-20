@@ -1,88 +1,57 @@
-
 🇺🇸 English | 🇧🇷 [Português](README.pt-BR.md)
 
 ## 📌 About SimpleAuth
 
-SimpleAuth is a **user authentication API built with FastAPI**, created to evolve a login system that previously ran only in the terminal into an **HTTP-based backend architecture**.
+SimpleAuth is a **user authentication API built with FastAPI**.
 
-Using FastAPI allows separating authentication logic from the interface, making the system more organized, reusable, and ready for future integrations such as web or mobile applications.
-
-Currently, user data is stored **in memory**, simulating real system behavior while core backend concepts are being learned.
+The project evolved from a terminal-only login system into a real HTTP backend with persistent data, token authentication, and access control.
 
 ---
 
-## ⚙️ Current features
+## ⚙️ Features
 
-- 🧑‍💻 User registration via endpoint (`/register`)
-- 🔐 Login with invalid attempt control
-- ⏳ Temporary blocking after multiple failed attempts
-- 🚪 User logout
-- ✏️ Username change
-- 🔄 Password change
-- 🛡️ Admin user with special permissions
-- ❌ User deletion (admin only)
-- 📋 User listing (admin only)
-- 🌐 REST API using FastAPI
-
----
-
-## 🧠 How it works
-
-- Each user is represented by a **`User` class**, containing:
-  - `user_id`
-  - `username`
-  - `password`
-  - `is_logged`
-  - `attempts`
-  - `blocked_until`
-
-- Users are stored in an **in-memory list** (`user_list`).
-- The API exposes endpoints that manipulate users via HTTP requests.
-- Authentication state is managed using flags (`is_logged`), simulating sessions.
-- The system includes:
-  - username validation
-  - password validation
-  - login attempt control
-  - temporary blocking using `datetime` and `timedelta`
+- User registration (`POST /register`)
+- Login with JWT token (`POST /login`)
+- Automatic login attempt control
+- Temporary user blocking after multiple invalid attempts
+- Logout with token (`POST /logout`)
+- Username change with automatic session invalidation (`POST /change-username`)
+- Password change (`POST /change-password`)
+- Admin-only user deletion (`DELETE /delete-user`)
+- Admin-only user listing (`GET /show-users`)
+- Authenticated profile check (`GET /me`)
 
 ---
 
-## 🆕 What’s new compared to the previous version
+## 🧠 How It Works
 
-- 🔁 The system no longer runs only in the terminal
-- 🌐 It now works as a **REST API**
-- 🧱 Uses **FastAPI** to structure routes and business logic
-- 🧠 Clear separation of concerns:
-  - validation
-  - authentication rules
-  - user management
-- 🚀 Codebase prepared for real data persistence
-
----
-
-## 🎯 Why FastAPI was used
-
-FastAPI was chosen to:
-- learn how authentication works in **real backend systems**
-- expose features via HTTP
-- prepare the project for database integration
-- enable testing with tools like Postman or Swagger
-- keep the code clean, scalable, and well-structured
+- The API uses **SQLite** for persistence (`app/storage/simpleauth.db`).
+- Passwords are stored as **hashes** (`pbkdf2_sha256` via `passlib`).
+- Authentication uses **JWT Bearer tokens**.
+- The system enforces one active session per user through:
+  - `session_active`
+  - `session_version`
+- Protected endpoints read the current user from the token.
 
 ---
 
-## 🚧 Next steps
+## 🆕 What’s New Compared To The Previous Version
 
-- 🗄️ Implement a **relational database (SQLite)** for user persistence
-- 🔒 Add **password hashing** (e.g. bcrypt)
-- 🧩 Replace in-memory storage with a **persistence layer**
-- 🔑 Implement **token-based authentication (JWT)**
-- 🧪 Improve error handling and validations
+- Migrated from in-memory users to **SQLite persistence**
+- Replaced state flags like `is_logged` with **JWT-based auth**
+- Added **hashed passwords**
+- Added automatic session invalidation after username changes
+- Added standardized HTTP error responses (`400`, `401`, `403`, `404`, `409`, `429`)
+- Request flows were tested using Postman
 
 ---
 
-## ▶️ How to run
+## ▶️ How To Run
 
 ```bash
-uvicorn main:app --reload
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
+API documentation is generated automatically by Swagger.

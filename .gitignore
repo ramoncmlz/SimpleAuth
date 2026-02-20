@@ -1,6 +1,20 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.log
 .env
+.env.*
 .venv/
 venv/
 
+# Banco de dados local
+app/storage/simpleauth.db
+
+# Cache de ferramentas Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
